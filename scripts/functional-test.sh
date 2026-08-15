@@ -53,7 +53,12 @@ echo "--- restore-verify: postgres ---"
 docker run -d --name functest-pg-restore --network "$NETWORK" \
     -e POSTGRES_USER=testuser -e POSTGRES_PASSWORD=testpass -e POSTGRES_DB=testdb \
     postgres:16-alpine >/dev/null
-timeout 30 sh -c 'until docker exec functest-pg-restore pg_isready -U testuser -d testdb -q; do sleep 1; done'
+# pg_isready alone isn't enough here: the official postgres image briefly
+# accepts connections during its internal init-script phase, then restarts
+# before the real, final startup -- pg_isready can catch that brief window
+# and report ready right before the restart drops the connection. Retry an
+# actual query instead of trusting a single readiness probe.
+timeout 30 sh -c 'until docker exec functest-pg-restore psql -U testuser -d testdb -tAc "SELECT 1" >/dev/null 2>&1; do sleep 1; done'
 PG_FILE=$($COMPOSE exec -T backup sh -c 'ls -t /archive/daily/pgtest_*.sql.gz | head -1' | tr -d '\r')
 $COMPOSE exec -T backup sh -c "gunzip -c '$PG_FILE'" | docker exec -i functest-pg-restore psql -U testuser -d testdb -q
 RESULT=$(docker exec functest-pg-restore psql -U testuser -d testdb -tAc "SELECT note FROM canary")

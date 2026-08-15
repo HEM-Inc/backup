@@ -1,10 +1,8 @@
 name: Docker Test
 
 on:
-  push:
-    branches: [main]
   pull_request:
-  workflow_call: # so publish.yml can require this to pass before pushing to GHCR
+  workflow_call: # invoked by publish.yml, which requires this to pass before pushing to GHCR
 
 jobs:
   build:
