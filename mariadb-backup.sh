@@ -17,8 +17,17 @@ PREFIX="${BACKUP_PREFIX:-mariadb}"
 # Write a temp defaults-extra-file so the password doesn't appear in the
 # process list or get passed on the command line.  Must be the first argument
 # to mariadb-dump / mariadb-admin.
+#
+# ssl=0: Ubuntu 26.04's mariadb-client (11.8.6) defaults to *requiring* TLS,
+# unlike the older client this image previously shipped (Alpine) -- against
+# a server with no TLS configured (the norm for an internal container-to-
+# container connection, e.g. osticket's real mariadb), the connection fails
+# with "SSL is required, but the server does not support it", and the
+# readiness loop below retries that failure silently forever (2>/dev/null)
+# rather than surfacing it. Caught by this image's own CI
+# (scripts/functional-test.sh) before it reached any real deployment.
 CNF_FILE=$(mktemp)
-printf '[client]\nhost=%s\nport=%s\nuser=%s\npassword=%s\n' \
+printf '[client]\nhost=%s\nport=%s\nuser=%s\npassword=%s\nssl=0\n' \
     "$MARIADB_HOST" "$MARIADB_PORT" "$MARIADB_USER" "$MARIADB_PASSWORD" \
     > "$CNF_FILE"
 chmod 600 "$CNF_FILE"
