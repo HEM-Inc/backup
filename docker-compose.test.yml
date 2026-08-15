@@ -1,0 +1,57 @@
+# Ephemeral fixtures for scripts/functional-test.sh -- not used in
+# production, only by .github/workflows/test.yml (and locally, for the
+# same purpose). Scoped to postgres/mariadb/mongo: the three modes whose
+# client binaries are natively compiled and therefore actually at risk of
+# breaking from a base-image change (e.g. the mariadb-dump/mysqldump
+# package-name mixup this project already hit once switching to Ubuntu).
+# qdrant/tar/surreal only use curl/jq under the hood, unaffected by the
+# base OS, and aren't covered here.
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: testuser
+      POSTGRES_PASSWORD: testpass
+      POSTGRES_DB: testdb
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U testuser -d testdb"]
+      interval: 2s
+      timeout: 2s
+      retries: 30
+
+  mariadb:
+    image: mariadb:10.11
+    environment:
+      MARIADB_ROOT_PASSWORD: rootpass
+      MARIADB_USER: testuser
+      MARIADB_PASSWORD: testpass
+      MARIADB_DATABASE: testdb
+    healthcheck:
+      test: ["CMD", "healthcheck.sh", "--connect", "--innodb_initialized"]
+      interval: 2s
+      timeout: 2s
+      retries: 30
+
+  mongo:
+    image: mongo:8.0
+    healthcheck:
+      test: ["CMD", "mongosh", "--quiet", "--eval", "db.adminCommand('ping')"]
+      interval: 2s
+      timeout: 2s
+      retries: 30
+
+  backup:
+    build: .
+    depends_on:
+      postgres:
+        condition: service_healthy
+      mariadb:
+        condition: service_healthy
+      mongo:
+        condition: service_healthy
+    volumes:
+      - test-archive:/archive
+    entrypoint: ["sleep", "infinity"]
+
+volumes:
+  test-archive:

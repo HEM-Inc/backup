@@ -8,7 +8,11 @@ env:
   IMAGE: ghcr.io/hem-inc/backup
 
 jobs:
+  test:
+    uses: ./.github/workflows/test.yml
+
   docker:
+    needs: test
     runs-on: ubuntu-latest
     permissions:
       contents: read

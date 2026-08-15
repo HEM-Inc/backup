@@ -9,8 +9,9 @@ case "$BACKUP_MODE" in
     postgres) exec /usr/local/bin/pg-backup.sh ;;
     mariadb)  exec /usr/local/bin/mariadb-backup.sh ;;
     surreal)  exec /usr/local/bin/surreal-backup.sh ;;
+    mongo)    exec /usr/local/bin/mongo-backup.sh ;;
     *)
-        printf 'ERROR: Unknown BACKUP_MODE "%s". Valid: qdrant, tar, postgres, mariadb, surreal\n' "$BACKUP_MODE" >&2
+        printf 'ERROR: Unknown BACKUP_MODE "%s". Valid: qdrant, tar, postgres, mariadb, surreal, mongo\n' "$BACKUP_MODE" >&2
         exit 1
         ;;
 esac
