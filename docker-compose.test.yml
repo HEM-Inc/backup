@@ -1,11 +1,15 @@
 # Ephemeral fixtures for scripts/functional-test.sh -- not used in
 # production, only by .github/workflows/test.yml (and locally, for the
-# same purpose). Scoped to postgres/mariadb/mongo: the three modes whose
-# client binaries are natively compiled and therefore actually at risk of
-# breaking from a base-image change (e.g. the mariadb-dump/mysqldump
-# package-name mixup this project already hit once switching to Ubuntu).
-# qdrant/tar/surreal only use curl/jq under the hood, unaffected by the
-# base OS, and aren't covered here.
+# same purpose).
+#
+# postgres/mariadb/mongo have natively-compiled client binaries that can
+# break from a base-image change (e.g. the mariadb-dump/mysqldump
+# package-name mixup this project hit switching to Ubuntu), so their whole
+# dump/restore round trip is exercised here. qdrant and tar go through
+# curl/jq/tar only, but they're covered too so the publish gate proves
+# every restore path the operator scripts offer, not just the db ones.
+# surreal is still uncovered (logical export/import over HTTP, no scripted
+# restore).
 services:
   postgres:
     image: postgres:16-alpine
@@ -40,6 +44,12 @@ services:
       timeout: 2s
       retries: 30
 
+  # No healthcheck: the qdrant image is distroless (no shell/curl), so
+  # functional-test.sh polls /healthz with curl from the backup container
+  # instead.
+  qdrant:
+    image: qdrant/qdrant:v1.19.1
+
   backup:
     build: .
     depends_on:
@@ -49,6 +59,8 @@ services:
         condition: service_healthy
       mongo:
         condition: service_healthy
+      qdrant:
+        condition: service_started
     volumes:
       - test-archive:/archive
     entrypoint: ["sleep", "infinity"]

@@ -8,19 +8,23 @@ Runs as a non-root `backup` user via [supercronic](https://github.com/aptible/su
 
 ## Image contents
 
+Root holds the container's front door; `src/` holds the scripts baked into
+the image and run behind it; `scripts/` holds host-side operator tooling
+that never enters the image (see [scripts/README.md](scripts/README.md)).
+
 | File | Purpose |
 |---|---|
 | `Dockerfile` | Ubuntu 26.04 LTS + curl + jq + postgresql-client + mariadb-client + `mongodump`/`mongorestore` (copied from the official `mongo:8.0` image) + supercronic; drops to non-root via gosu |
 | `entrypoint.sh` | Writes crontab from `BACKUP_SCHEDULE` (and `DRILL_SCHEDULE`, if set), chowns archive dirs, execs supercronic as the `backup` user |
-| `backup.sh` | Dispatcher — reads `BACKUP_MODE` and calls the appropriate script |
-| `qd-snapshot.sh` | Qdrant API-based backup — per-collection snapshot via REST API |
-| `tar-backup.sh` | Generic volume backup — tars a mounted volume to an archive directory |
-| `pg-backup.sh` | Postgres backup — `pg_dump | gzip`, waits for the database to be ready |
-| `mariadb-backup.sh` | MariaDB/MySQL backup — `mariadb-dump | gzip`, waits for the database to be ready |
-| `surreal-backup.sh` | SurrealDB backup — logical export via the HTTP `/export` endpoint, gzipped |
-| `mongo-backup.sh` | MongoDB backup — `mongodump --archive --gzip`, waits for the database to be ready |
-| `retention.sh` | Shared tiered retention — daily / weekly / monthly; called by all backup scripts |
-| `drill.sh` | Lightweight backup integrity check — see [Drill testing](#drill-testing) |
+| `src/backup.sh` | Dispatcher — reads `BACKUP_MODE` and calls the appropriate script |
+| `src/qd-snapshot.sh` | Qdrant API-based backup — per-collection snapshot via REST API |
+| `src/tar-backup.sh` | Generic volume backup — tars a mounted volume to an archive directory |
+| `src/pg-backup.sh` | Postgres backup — `pg_dump | gzip`, waits for the database to be ready |
+| `src/mariadb-backup.sh` | MariaDB/MySQL backup — `mariadb-dump | gzip`, waits for the database to be ready |
+| `src/surreal-backup.sh` | SurrealDB backup — logical export via the HTTP `/export` endpoint, gzipped |
+| `src/mongo-backup.sh` | MongoDB backup — `mongodump --archive --gzip`, waits for the database to be ready |
+| `src/retention.sh` | Shared tiered retention — daily / weekly / monthly; called by all backup scripts |
+| `src/drill.sh` | Lightweight backup integrity check — see [Drill testing](#drill-testing) |
 
 **Why Ubuntu instead of Alpine**: `mongodump`/`mongorestore` ship no Alpine/musl build — they're dynamically linked against glibc and Kerberos. Rather than fetch MongoDB's own tools tarball as a second, independently-checksummed download path, the binaries are copied from the official `mongo:8.0` image in a multi-stage build; the final stage uses the same Ubuntu lineage so there's no glibc-version mismatch to worry about. `mariadb-client` is installed explicitly (not `default-mysql-client`) — Ubuntu's `default-mysql-client` installs `mysqldump`/`mysqladmin`, not the `mariadb-dump`/`mariadb-admin` names `mariadb-backup.sh` actually calls.
 
@@ -30,12 +34,12 @@ Select the mode with `BACKUP_MODE`:
 
 | Mode | Script | Use for |
 |---|---|---|
-| `qdrant` | `qd-snapshot.sh` | Qdrant vector database |
-| `tar` | `tar-backup.sh` | Any mounted volume |
-| `postgres` | `pg-backup.sh` | PostgreSQL databases |
-| `mariadb` | `mariadb-backup.sh` | MariaDB / MySQL databases |
-| `surreal` | `surreal-backup.sh` | SurrealDB databases |
-| `mongo` | `mongo-backup.sh` | MongoDB databases |
+| `qdrant` | `src/qd-snapshot.sh` | Qdrant vector database |
+| `tar` | `src/tar-backup.sh` | Any mounted volume |
+| `postgres` | `src/pg-backup.sh` | PostgreSQL databases |
+| `mariadb` | `src/mariadb-backup.sh` | MariaDB / MySQL databases |
+| `surreal` | `src/surreal-backup.sh` | SurrealDB databases |
+| `mongo` | `src/mongo-backup.sh` | MongoDB databases |
 
 ## Common environment variables
 
@@ -156,9 +160,41 @@ environment:
   DRILL_SCHEDULE: "0 5 * * 0"   # weekly, Sunday 05:00 -- unset = no drill runs at all
 ```
 
-**What this deliberately does *not* do**: restore the backup into a live database and verify the data. That would need a second, standing database instance (a "scratch" sidecar) to restore into — considered and rejected for now. The deployment fleet this image actually runs on includes 8GB-RAM industrial PCs already running a real-time production stack; a second idle database engine plus a full restored copy of production data is a real resource risk there (RAM via `tmpfs`, or disk via a real volume — neither is free on hardware that tight), and a `docker.sock`-based "spin up a throwaway container on demand" alternative doesn't work cleanly with rootless Podman (no `/var/run/docker.sock` to bind-mount; its own API socket lives at a different, per-user path) — see this project's own "no Docker socket required" design principle above. If a specific deployment has real headroom to spare, a scratch-sidecar restore-verify drill is a reasonable thing to add to *that stack's* compose file (not to this shared image) — not implemented anywhere today.
+**What this deliberately does *not* do**: restore the backup into a live database and verify the data, on the fleet's own schedule, from inside the image. That would need a second, standing database instance (a "scratch" sidecar) baked into every deployment, or `docker.sock`/`podman.sock` access from the always-on backup container itself — both rejected for this shared image. The deployment fleet this image actually runs on includes 8GB-RAM industrial PCs already running a real-time production stack, where a second idle database engine plus a full restored copy of production data is a real resource risk (RAM via `tmpfs`, or disk via a real volume — neither is free on hardware that tight). Giving the backup container the container-engine socket would fix the "how do we spin up a throwaway container" problem, but it also hands that background cron process root-equivalent control of the host — a bad trade for what should be a narrowly-scoped process, and it doesn't work cleanly with rootless Podman anyway (no fixed `/var/run/docker.sock`-equivalent path — see this project's own "no Docker socket required" design principle above).
 
-The genuine restore-and-verify testing — does a real restore of a real dump actually work, not just "is the file well-formed" — happens in this repo's own CI instead (`scripts/functional-test.sh`, run by every push/PR via `.github/workflows/test.yml`, and required to pass before `publish.yml` will push a new image to GHCR). CI runners don't have the IPC fleet's resource constraints, so that's where it's safe to do the real thing.
+The genuine restore-and-verify testing — does a real restore of a real dump actually work, not just "is the file well-formed" — happens in two places instead, neither of which requires the shared image to touch a socket:
+
+- **This repo's own CI** (`scripts/functional-test.sh`, run by every push/PR via `.github/workflows/test.yml`, required to pass before `publish.yml` will push a new image to GHCR) — against ephemeral fixtures, proving the image's own backup/restore logic works.
+- **`scripts/restore-verify.sh`**, run by an operator against a real deployment (see [Restoring a backup](#restoring-a-backup) below) — it shells out to whatever `docker`/`podman` is already on the *host's* PATH, the same as any other admin tooling. The always-on backup container's own permissions are unchanged either way.
+
+## Restoring a backup
+
+Two scripts under `scripts/` cover the two restore scenarios — copy and adapt them for a specific deployment rather than running them unmodified. Full usage, env vars, the multi-target manifest format, and worked examples live in **[scripts/README.md](scripts/README.md)**; short version:
+
+- **`scripts/restore.sh <postgres|mariadb|mongo|tar|qdrant> <archive-file> <target>`** — a real restore. `target` is a running container (db, dump piped into its own client via `docker/podman exec`), a named volume (`tar`, extracted via a throwaway helper container), or a base URL (`qdrant`, each snapshot uploaded over REST). Prompts for confirmation before overwriting data. Use this for actual disaster recovery.
+- **`scripts/restore-verify.sh <postgres|mariadb|mongo|tar|qdrant>`** — the full validation drill: finds the latest backup for `BACKUP_PREFIX`, reconstitutes it in a throwaway scratch (a fresh engine container for db modes, a scratch tree for `tar`, a scratch `qdrant/qdrant` for `qdrant`), runs a schema-agnostic inventory (row counts / file count + bytes / per-collection `points_count`) against both the scratch and `LIVE_TARGET`, prints them side by side, and tears the scratch down. Pass/fail is about whether the restore and inventory succeeded, not whether the two sides match exactly — the live target will usually have moved on since the backup was taken.
+- Both also take **`all [targets-file]`** to restore/drill every target listed in a manifest in one shot (`scripts/restore-targets.conf.example`). The loop dispatches per line on `mode`, so a stack with (say) three `tar` volumes and one `qdrant` is just four manifest lines. A target with no backup yet is a `SKIP`, not a failure, so a manifest can list every service a deployment might eventually back up without failing the run over the ones that aren't wired up yet.
+- `surreal` restore is not scripted — reimport a SurrealQL dump with `POST /import`.
+
+Neither script requires `docker.sock`/`podman.sock` inside any container; both are meant to be run by whoever/whatever already has host-level Docker or Podman access (an operator's shell, a host cron job, a systemd timer) — never wired into the always-on backup container.
+
+```console
+$ ARCHIVE_DIR=./backups/postgres BACKUP_PREFIX=postgres LIVE_CONTAINER=my-postgres-1 \
+  POSTGRES_USER=myuser POSTGRES_PASSWORD=mypass POSTGRES_DB=mydb \
+  scripts/restore-verify.sh postgres
+```
+
+### Using these scripts from another repo
+
+`scripts/restore.sh` and `scripts/restore-verify.sh` don't depend on anything else in this image or repo (no `BACKUP_MODE`, no Dockerfile) — they're plain host scripts driven entirely by CLI args, env vars, and a targets manifest. A compose repo like `hemsaw/docker` or `hemsaw/ai` can call a pinned copy directly instead of duplicating them:
+
+```console
+$ curl -fsSL https://raw.githubusercontent.com/HEM-Inc/backup/v1.2.0/scripts/restore-verify.sh -o restore-verify.sh
+$ chmod +x restore-verify.sh
+$ LIVE_CONTAINER=my-postgres-1 POSTGRES_USER=... POSTGRES_PASSWORD=... POSTGRES_DB=... ./restore-verify.sh postgres
+```
+
+Pin to a tag (`v1.2.0`, matching this repo's own [Versioning](#versioning)), not `main` — an unpinned reference from another repo can otherwise pick up a breaking change to these scripts without warning.
 
 ## Adding a new backup target
 

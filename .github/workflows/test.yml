@@ -17,5 +17,5 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
-      - name: Restore-verify postgres/mariadb/mongo
+      - name: Restore-verify postgres/mariadb/mongo/tar/qdrant
         run: ./scripts/functional-test.sh

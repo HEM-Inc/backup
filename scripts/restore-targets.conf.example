@@ -1,0 +1,35 @@
+# Manifest for `scripts/restore.sh all` and `scripts/restore-verify.sh all`.
+# One target per line, whitespace-separated, `#`-comments and blank lines
+# ignored. Copy to restore-targets.conf (or point at any path as the
+# second CLI arg) and adjust for your deployment.
+#
+#   mode      prefix     archive_dir              target                  env_file
+#
+# mode         postgres, mariadb, mongo, tar, or qdrant
+# prefix       BACKUP_PREFIX the backup was written with
+# archive_dir  host path containing daily/ (the host-side path backing
+#              that service's /archive volume mount, NOT the in-container
+#              /archive path)
+# target       mode-specific:
+#                postgres/mariadb/mongo -- container name. For restore.sh,
+#                  what gets restored INTO; for restore-verify.sh, the LIVE
+#                  container compared against a throwaway scratch restore.
+#                tar    -- volume name. restore.sh extracts into it via a
+#                  helper container; restore-verify.sh mounts it read-only
+#                  to inventory it next to a scratch extraction.
+#                qdrant -- base URL (e.g. http://localhost:6333). restore.sh
+#                  uploads each snapshot over REST; restore-verify.sh
+#                  compares it against a throwaway scratch qdrant.
+# env_file     path to a file of `KEY=value` lines providing that target's
+#              creds (POSTGRES_USER/POSTGRES_PASSWORD/POSTGRES_DB, etc. --
+#              see restore.sh/restore-verify.sh's own header comments for
+#              the full list per mode). Use `-` for a target that needs no
+#              creds (tar always; qdrant unless QDRANT_API_KEY applies).
+#              Keep real env files out of version control.
+
+postgres  postgres  ../backups/postgres  my-postgres-1          ./secrets/postgres.env
+mariadb   mariadb   ../backups/mariadb   my-mariadb-1           ./secrets/mariadb.env
+mongo     mongo     ../backups/mongo     my-mongo-1             ./secrets/mongo.env
+tar       vol-a     ../backups/vol-a     hemsaw_vol_a           -
+tar       vol-b     ../backups/vol-b     hemsaw_vol_b           -
+qdrant    qdrant    ../backups/qdrant    http://localhost:6333  -

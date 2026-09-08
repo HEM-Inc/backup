@@ -40,15 +40,15 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 COPY --from=mongotools /usr/bin/mongodump /usr/bin/mongorestore /usr/local/bin/
 
 COPY entrypoint.sh /usr/local/bin/entrypoint.sh
-COPY backup.sh /usr/local/bin/backup.sh
-COPY retention.sh /usr/local/bin/retention.sh
-COPY drill.sh /usr/local/bin/drill.sh
-COPY qd-snapshot.sh /usr/local/bin/qd-snapshot.sh
-COPY tar-backup.sh /usr/local/bin/tar-backup.sh
-COPY pg-backup.sh /usr/local/bin/pg-backup.sh
-COPY mariadb-backup.sh /usr/local/bin/mariadb-backup.sh
-COPY surreal-backup.sh /usr/local/bin/surreal-backup.sh
-COPY mongo-backup.sh /usr/local/bin/mongo-backup.sh
+COPY src/backup.sh /usr/local/bin/backup.sh
+COPY src/retention.sh /usr/local/bin/retention.sh
+COPY src/drill.sh /usr/local/bin/drill.sh
+COPY src/qd-snapshot.sh /usr/local/bin/qd-snapshot.sh
+COPY src/tar-backup.sh /usr/local/bin/tar-backup.sh
+COPY src/pg-backup.sh /usr/local/bin/pg-backup.sh
+COPY src/mariadb-backup.sh /usr/local/bin/mariadb-backup.sh
+COPY src/surreal-backup.sh /usr/local/bin/surreal-backup.sh
+COPY src/mongo-backup.sh /usr/local/bin/mongo-backup.sh
 RUN chmod +x /usr/local/bin/entrypoint.sh \
               /usr/local/bin/backup.sh \
               /usr/local/bin/retention.sh \

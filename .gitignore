@@ -30,3 +30,9 @@
 
 # Ignore code-workspaces
 *.code-workspace
+
+# Restore-drill manifests and creds (scripts/restore.sh, scripts/restore-verify.sh)
+# -- real paths/container names for a specific deployment, not for version control.
+/restore-targets.conf
+/secrets/
+*.env
