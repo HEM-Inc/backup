@@ -3,11 +3,11 @@
 # Ubuntu base is verified compatible with this image's own Ubuntu base
 # below, rather than fetched from MongoDB's own tools tarball as a second,
 # independently-checksummed download path for the same upstream artifact.
-FROM mongo:8.0 AS mongotools
+FROM mongo:8.0.34@sha256:b9924c330a8bbc5800fe9c69f04a84e221eca7b28fd049a0354147d9908fa142 AS mongotools
 
-FROM ubuntu:26.04
+FROM ubuntu:26.04@sha256:0e73b71479e7bc5f006bca872e25c3cd680dc052a0116f90d63ae363537db0dd
 
-ARG SUPERCRONIC_VERSION=v0.2.49
+ARG SUPERCRONIC_VERSION=v0.2.51
 ARG GOSU_VERSION=1.19
 ARG TARGETARCH=amd64
 
@@ -15,8 +15,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
         ca-certificates curl jq postgresql-client mariadb-client netcat-openbsd libgssapi-krb5-2 \
     && rm -rf /var/lib/apt/lists/* && \
     case "$TARGETARCH" in \
-        amd64) SUPERCRONIC_SHA1=e63c11a9726b775a6a11801e81af4f3fb926aa68 ;; \
-        arm64) SUPERCRONIC_SHA1=0b6c5bb743e0b0dafed1132198c81807927ac413 ;; \
+        amd64) SUPERCRONIC_SHA1=1692066e350a88ff4d7d6474fe3c7a6c41ec5e89 ;; \
+        arm64) SUPERCRONIC_SHA1=9d4c2000493215a1898502b2fc2dada3e8ea8c7a ;; \
         *)     printf 'ERROR: unsupported arch: %s\n' "$TARGETARCH" >&2; exit 1 ;; \
     esac && \
     curl -fsSLO "https://github.com/aptible/supercronic/releases/download/${SUPERCRONIC_VERSION}/supercronic-linux-${TARGETARCH}" && \

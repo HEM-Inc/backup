@@ -24,3 +24,16 @@ When the user asks for a release, tag `HEAD` as `v$(cat VERSION)` —
 the last tag, so there's no number to ask the user for or guess at. Pushing
 that tag is what triggers `.github/workflows/publish.yml`, which builds and
 pushes `ghcr.io/hem-inc/backup` for `linux/amd64,linux/arm64`.
+
+# Bumping pinned versions
+
+The base images (`FROM ... @sha256`), supercronic and gosu are pinned with
+digests or checksums. Before bumping any of them, check for active breaches and
+issues first: upstream archived or abandoned, security advisories whose range
+covers the target version, open issues and release notes for that release, and
+recent supply-chain or breach news about the project or its publisher. Report
+what you found before changing anything, and stop if there is an active
+problem. The full checklist is in `../docker/CLAUDE.md`.
+
+Read-only GitHub API calls must pass `--method GET`: any `-f` or `-F` flag
+otherwise turns `gh api` into a POST.
