@@ -16,7 +16,11 @@ ARCHIVE="${BACKUP_ARCHIVE:-/archive}"
 mkdir -p "${ARCHIVE}/daily" "${ARCHIVE}/weekly" "${ARCHIVE}/monthly"
 chown -R backup:backup "${ARCHIVE}"
 
-CRONTAB_FILE=/tmp/backup.crontab
+# Fresh file every start: a fixed path left over from a previous run (restart
+# keeps the container's writable layer) is owned by backup after the chown
+# below, and root can't reopen it in sticky /tmp when CAP_DAC_OVERRIDE is
+# dropped or fs.protected_regular is set -- "Permission denied" restart loop.
+CRONTAB_FILE=$(mktemp /tmp/backup.crontab.XXXXXX)
 printf '%s /usr/local/bin/backup.sh\n' "$SCHEDULE" > "$CRONTAB_FILE"
 
 # DRILL_SCHEDULE is optional -- a second, independent cron line running the
